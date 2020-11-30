@@ -30,26 +30,32 @@ private:
   }
 
   mlir::Value genFuncBody() {
-    mlir::OperationState state(Loc(), "state");
     ArrayRef<int64_t> shape = {1};
     std::vector<double> data(1);
-  
     auto dataType = mlir::RankedTensorType::get(shape, builder.getF64Type());
     auto dataAttribute = mlir::DenseElementsAttr::get(dataType,
                                                       llvm::makeArrayRef(data));
-    return builder.create<ConstantOp>(Loc(), dataType, dataAttribute);
+    return builder.create<ConstantOp>(Loc(), /*element_type=*/dataType,
+                                      /*value=*/dataAttribute);
   }
   
   mlir::FuncOp genFunc() {
-    llvm::SmallVector<mlir::Type, 4> arg_types;
-    auto func_type = builder.getFunctionType(arg_types, llvm::None);
-    mlir::FuncOp function = mlir::FuncOp::create(Loc(), "test", func_type);
+    // llvm::SmallVector<mlir::Type, 4> arg_types;
+    // auto func_type = builder.getFunctionType(arg_types, llvm::None);
+    auto func_type = builder.getFunctionType(/*input_types=*/llvm::None,
+                                             /*result_type=*/llvm::None);
+    mlir::FuncOp function =
+        mlir::FuncOp::create(Loc(), /*func_name=*/"test", func_type);
     
     auto &entryBlock = *function.addEntryBlock();
     builder.setInsertionPointToStart(&entryBlock);
   
     genFuncBody();
-    // builder.create<ReturnOp>(Loc());
+
+    // Fix function result type.
+    auto result_type = mlir::UnrankedTensorType::get(builder.getF64Type());
+    function.setType(builder.getFunctionType(function.getType().getInputs(),
+                                             result_type));
     return function;
   }
 
@@ -63,6 +69,12 @@ int main() {
   ModuleGen impl(context);
 
   mlir::ModuleOp module = impl.genModule();
+  /*
+  module {
+  func @test() -> tensor<*xf64> {
+    %0 = "ts.constant"() {value = dense<0.000000e+00> : tensor<1xf64>} : () -> tensor<1xf64>
+  }
+  */
   module.dump();
   return 0;
 }
